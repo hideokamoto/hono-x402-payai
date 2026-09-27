@@ -143,6 +143,15 @@ curl -s "http://localhost:8787/agent?fail=insufficient"
 #   header.error: "invalid_exact_evm_insufficient_balance"
 ```
 
+他の失敗パターンについて:
+
+- **署名期限切れ**: `validBefore` を過去にした署名 → 同様に verify で拒否される
+  （FailMode を増やせば再現可能）
+- **ファシリテーター障害**: PayAI 側が落ちると初回の `/supported` 取得で 500。
+  再現はタイミング依存で難しい
+- **settle 失敗**（verify は通るがオンチェーン実行が失敗）: nonce 衝突など
+  ファシリテーター側起因のため意図的な再現は困難
+
 前提: 買い手ウォレットに Base Sepolia USDC（Circle faucet）が入っていること、
 Workers AI はローカルでもリモート実行されるので `wrangler login` 済みであること。
 
