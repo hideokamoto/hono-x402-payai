@@ -3,9 +3,9 @@
   "name": "hono-x402-payai",
   "main": "src/index.ts",
   "compatibility_date": "2026-09-26",
-  // "compatibility_flags": [
-  //   "nodejs_compat"
-  // ],
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
   "vars": {
     "PAY_TO": "0xc6C1Fe4FaCFB120BCb8A4BdC4c9E83E123E73eaE",
     "NETWORK": "eip155:84532"
@@ -29,9 +29,9 @@
   //     "database_id": ""
   //   }
   // ],
-  // "ai": {
-  //   "binding": "AI"
-  // },
+  "ai": {
+    "binding": "AI"
+  },
   // "observability": {
   //   "enabled": true,
   //   "head_sampling_rate": 1

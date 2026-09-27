@@ -7,9 +7,10 @@ Cloudflare Workers 上の Hono アプリに x402 の支払い要求を付け、�
 ## 構成
 
 ```
-src/index.ts     Workers 側（課金される API サーバー）
+src/index.ts     Workers 側（課金される API サーバー + /agent ルート）
+src/agent.ts     支払う側エージェント（Mastra + Workers AI + x402 クライアント）
 buyer/buyer.ts   買い手スクリプト（EIP-3009 署名を送る fetch クライアント）
-wrangler.jsonc   PAY_TO / NETWORK の設定
+wrangler.jsonc   PAY_TO / NETWORK / AI バインディングの設定
 ```
 
 動作の流れ:
@@ -97,6 +98,37 @@ Base Sepolia のテスト用 USDC を入れておく。**秘密鍵はテスト�
 決済が通ると `status: 200 / paymentStatus: "settled"` が返り、
 `PAYMENT-RESPONSE` 内の `transaction` に Base Sepolia の tx ハッシュが入る。
 着金は [sepolia.basescan.org](https://sepolia.basescan.org) で受取アドレスを検索して確認。
+
+### 方法 C: Workers 内の支払いエージェント（Mastra + Workers AI）
+
+同じ Worker の中に [Mastra](https://mastra.ai) のエージェントを載せてあり、
+LLM（Workers AI バインディング）がツール経由で自分自身の `/weather` に
+x402 支払いをして取りに行く。buyer/ の Node スクリプトと違い、
+ウォレット署名も LLM も Worker 内で完結する。
+
+ローカルでは `.dev.vars` に買い手の鍵を入れる（gitignore 済み）:
+
+```bash
+echo 'EVM_PRIVATE_KEY=0x<買い手の秘密鍵>' > .dev.vars
+```
+
+```bash
+pnpm dev
+curl -s "http://localhost:8787/agent?prompt=Tell%20me%20the%20weather"
+# → {"text":"The current weather report is: sunny ... transaction hash 0x..."}
+```
+
+`POST /agent` に `{"prompt": "..."}` を投げても同じ。
+デプロイ環境では `npx wrangler secret put EVM_PRIVATE_KEY` で登録する。
+
+注意:
+
+- `/agent` は無認証のため、公開先では誰でも買い手ウォレットの USDC を
+  $0.001 ずつ消費できる。testnet 限定なら実害は薄いが、本番なら認証を挟むこと
+- Workers AI バインディングはローカル dev でもリモート実行され、
+  アカウントの利用量を消費する
+- llama 系モデルは `tool_choice` を無視してツールを呼ばないことがあるため、
+  `prepareStep` で1ステップ目のツール呼び出しを強制している（src/index.ts）
 
 ## PayAI API キー（任意・無料枠超過時）
 

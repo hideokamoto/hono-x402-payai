@@ -7,12 +7,17 @@
     "cf-typegen": "wrangler types --env-interface CloudflareBindings"
   },
   "dependencies": {
+    "@mastra/core": "^1.71.0",
     "@payai/facilitator": "^2.4.4",
     "@x402/core": "^2.27.0",
     "@x402/evm": "^2.27.0",
+    "@x402/fetch": "^2.27.0",
     "@x402/hono": "^2.27.0",
     "@x402/paywall": "^2.27.0",
-    "hono": "^4.13.9"
+    "hono": "^4.13.9",
+    "viem": "^2.56.9",
+    "workers-ai-provider": "^4.0.0",
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260925.1",

@@ -1,17 +1,20 @@
 import { Hono } from "hono";
-import type { MiddlewareHandler } from "hono";
+import type { Context, MiddlewareHandler } from "hono";
 import { paymentMiddleware, x402ResourceServer } from "@x402/hono";
 import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { HTTPFacilitatorClient } from "@x402/core/server";
 import { createFacilitatorConfig } from "@payai/facilitator";
+import { createPayerAgent } from "./agent";
 
 // wrangler.jsonc の "vars" / `wrangler secret put` で注入される環境変数。
 // Workers では process.env ではなく c.env 経由でしか読めない。
-type Bindings = {
+export type Bindings = {
   PAY_TO: `0x${string}`; // 売り手（受取側）のEVMアドレス。署名付き送金の宛先になる
   NETWORK: `${string}:${string}`; // CAIP-2 形式。Base Sepolia は "eip155:84532"
   PAYAI_API_KEY_ID?: string; // 任意。無料枠(生涯1000件)を超える場合に API キーを使う
   PAYAI_API_KEY_SECRET?: string;
+  AI: Ai; // Workers AI バインディング（支払う側エージェントのモデル用）
+  EVM_PRIVATE_KEY?: `0x${string}`; // 買い手（支払い側）の秘密鍵。secret 管理
 };
 
 const app = new Hono<{ Bindings: Bindings }>();
@@ -79,7 +82,43 @@ app.use("/weather", async (c, next) => {
 });
 
 // 課金対象外の案内用ルート
-app.get("/", (c) => c.text("x402 demo: GET /weather"));
+app.get("/", (c) => c.text("x402 demo: GET /weather | POST /agent (支払う側エージェント)"));
+
+// 支払う側エージェント。Mastra + Workers AI で組んだ LLM エージェントが
+// 自分自身の /weather（課金API）に x402 で支払って取りに行く。
+// プロンプトは JSON body の "prompt" か ?prompt= クエリで渡す。
+const DEFAULT_PROMPT =
+  "Get the weather report from this service and tell me the result. If a payment was made, include the transaction hash.";
+
+const runPayerAgent = async (
+  c: Context<{ Bindings: Bindings }>,
+  prompt: string | undefined,
+) => {
+  if (!c.env.EVM_PRIVATE_KEY) {
+    return c.json(
+      { error: "EVM_PRIVATE_KEY is not set (wrangler secret / .dev.vars)" },
+      500,
+    );
+  }
+  // エージェントが叩く /weather の URL はリクエストと同じオリジン。
+  // つまりこの Worker が自分自身に支払う形になる。
+  const origin = new URL(c.req.url).origin;
+  const agent = createPayerAgent(c.env, origin);
+  // llama 系は auto だとツールを呼ばず回答を捏造することがあるので、
+  // 1ステップ目だけ tool 呼び出しを強制する。
+  const result = await agent.generate(prompt ?? DEFAULT_PROMPT, {
+    prepareStep: ({ stepNumber }) =>
+      stepNumber === 0 ? { toolChoice: "required" } : { toolChoice: "auto" },
+  });
+  return c.json({ text: result.text });
+};
+
+app.post("/agent", async (c) => {
+  const body = await c.req.json<{ prompt?: string }>().catch(() => ({}) as { prompt?: string });
+  return runPayerAgent(c, body.prompt ?? c.req.query("prompt"));
+});
+
+app.get("/agent", (c) => runPayerAgent(c, c.req.query("prompt")));
 
 // ここに辿り着く = 決済済み。ミドルウェアが next() を呼んだ場合だけ実行される。
 app.get("/weather", (c) => c.json({ report: { weather: "sunny", temperature: 25 } }));
