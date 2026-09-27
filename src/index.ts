@@ -4,7 +4,7 @@ import { paymentMiddleware, x402ResourceServer } from "@x402/hono";
 import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { HTTPFacilitatorClient } from "@x402/core/server";
 import { createFacilitatorConfig } from "@payai/facilitator";
-import { createPayerAgent } from "./agent";
+import { createPayerAgent, type FailMode } from "./agent";
 
 // wrangler.jsonc の "vars" / `wrangler secret put` で注入される環境変数。
 // Workers では process.env ではなく c.env 経由でしか読めない。
@@ -93,8 +93,13 @@ const DEFAULT_PROMPT =
 const runPayerAgent = async (
   c: Context<{ Bindings: Bindings }>,
   prompt: string | undefined,
+  fail: string | undefined,
 ) => {
-  if (!c.env.EVM_PRIVATE_KEY) {
+  // fail=insufficient は残高ゼロの捨て鍵を使う失敗シナリオ。
+  // その場合は本物の買い手鍵は不要。
+  const failMode: FailMode | undefined =
+    fail === "insufficient" ? "insufficient" : undefined;
+  if (!failMode && !c.env.EVM_PRIVATE_KEY) {
     return c.json(
       { error: "EVM_PRIVATE_KEY is not set (wrangler secret / .dev.vars)" },
       500,
@@ -103,22 +108,29 @@ const runPayerAgent = async (
   // エージェントが叩く /weather の URL はリクエストと同じオリジン。
   // つまりこの Worker が自分自身に支払う形になる。
   const origin = new URL(c.req.url).origin;
-  const agent = createPayerAgent(c.env, origin);
+  const { agent, payment } = createPayerAgent(c.env, origin, failMode);
   // llama 系は auto だとツールを呼ばず回答を捏造することがあるので、
   // 1ステップ目だけ tool 呼び出しを強制する。
   const result = await agent.generate(prompt ?? DEFAULT_PROMPT, {
     prepareStep: ({ stepNumber }) =>
       stepNumber === 0 ? { toolChoice: "required" } : { toolChoice: "auto" },
   });
-  return c.json({ text: result.text });
+  // payment はツールの実結果（LLM の発言ではなく ground truth）。
+  // settled なら header.transaction に tx ハッシュ、失敗なら
+  // paymentStatus と header.error が入る。
+  return c.json({ text: result.text, payment: payment.current });
 };
 
 app.post("/agent", async (c) => {
-  const body = await c.req.json<{ prompt?: string }>().catch(() => ({}) as { prompt?: string });
-  return runPayerAgent(c, body.prompt ?? c.req.query("prompt"));
+  const body = await c.req
+    .json<{ prompt?: string; fail?: string }>()
+    .catch(() => ({}) as { prompt?: string; fail?: string });
+  return runPayerAgent(c, body.prompt ?? c.req.query("prompt"), body.fail ?? c.req.query("fail"));
 });
 
-app.get("/agent", (c) => runPayerAgent(c, c.req.query("prompt")));
+app.get("/agent", (c) =>
+  runPayerAgent(c, c.req.query("prompt"), c.req.query("fail")),
+);
 
 // ここに辿り着く = 決済済み。ミドルウェアが next() を呼んだ場合だけ実行される。
 app.get("/weather", (c) => c.json({ report: { weather: "sunny", temperature: 25 } }));

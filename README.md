@@ -130,6 +130,19 @@ curl -s "http://localhost:8787/agent?prompt=Tell%20me%20the%20weather"
 `POST /agent` に `{"prompt": "..."}` を投げても同じ。
 返ってくる tx ハッシュは `https://sepolia.basescan.org/tx/<hash>` で確認できる。
 
+レスポンスの `payment` フィールドにはツール実行の実結果（LLM の発言ではなく
+ground truth）が入る。`paymentStatus: "settled"` なら `header.transaction` に
+tx ハッシュ、失敗なら `header.error` に拒否理由が入る。
+
+支払い失敗シナリオも再現できる。`?fail=insufficient` を付けると残高ゼロの
+捨て鍵を生成して署名するため、PayAI の verify が必ず残高不足で拒否する:
+
+```bash
+curl -s "http://localhost:8787/agent?fail=insufficient"
+# → paymentStatus: "payment_required",
+#   header.error: "invalid_exact_evm_insufficient_balance"
+```
+
 前提: 買い手ウォレットに Base Sepolia USDC（Circle faucet）が入っていること、
 Workers AI はローカルでもリモート実行されるので `wrangler login` 済みであること。
 
