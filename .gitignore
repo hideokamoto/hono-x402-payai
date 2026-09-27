@@ -33,3 +33,6 @@ lerna-debug.log*
 .DS_Store
 .devin/
 .env.local
+
+# generated UI bundle
+public/ui/app.js

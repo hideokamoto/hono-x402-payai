@@ -130,6 +130,15 @@ curl -s "http://localhost:8787/agent?prompt=Tell%20me%20the%20weather"
 `POST /agent` に `{"prompt": "..."}` を投げても同じ。
 返ってくる tx ハッシュは `https://sepolia.basescan.org/tx/<hash>` で確認できる。
 
+ブラウザのチャットUIもある。`pnpm dev` 中に http://localhost:8787/ui/
+を開くと、@ai-sdk/react の `useChat` で作った React アプリ
+（web/ui.tsx → esbuild で public/ui/app.js にバンドル、Workers Static
+Assets 経由で配信）からストリーミングでやり取りできる。バックエンドは
+`POST /api/chat` で、Mastra のストリームを `@mastra/ai-sdk` の
+`toAISdkStream` で AI SDK の UI message stream に変換して返す。
+ツール呼び出しと支払い結果（paymentStatus / tx ハッシュ）は
+UI 上でカードとして表示される。`fail: insufficient` トグル付き。
+
 レスポンスの `payment` フィールドにはツール実行の実結果（LLM の発言ではなく
 ground truth）が入る。`paymentStatus: "settled"` なら `header.transaction` に
 tx ハッシュ、失敗なら `header.error` に拒否理由が入る。

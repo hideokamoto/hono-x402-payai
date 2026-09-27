@@ -4,6 +4,8 @@ import { paymentMiddleware, x402ResourceServer } from "@x402/hono";
 import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { HTTPFacilitatorClient } from "@x402/core/server";
 import { createFacilitatorConfig } from "@payai/facilitator";
+import { toAISdkStream } from "@mastra/ai-sdk";
+import { createUIMessageStream, createUIMessageStreamResponse } from "ai";
 import { createPayerAgent, type FailMode } from "./agent";
 
 // wrangler.jsonc の "vars" / `wrangler secret put` で注入される環境変数。
@@ -131,6 +133,57 @@ app.post("/agent", async (c) => {
 app.get("/agent", (c) =>
   runPayerAgent(c, c.req.query("prompt"), c.req.query("fail")),
 );
+
+// /ui のチャットUI(@ai-sdk/react useChat)が叩くストリーミングAPI。
+// AI SDK の UIMessage[] を受け取り、Mastra のストリームを
+// toAISdkStream で UI message stream に変換して返す。
+// ツール実行の実結果(payment)は ground truth として data-payment パートでも流す。
+app.post("/api/chat", async (c) => {
+  const body = await c.req
+    .json<{ messages?: any[]; fail?: string }>()
+    .catch(() => ({}) as { messages?: any[]; fail?: string });
+  const failMode: FailMode | undefined =
+    body.fail === "insufficient" ? "insufficient" : undefined;
+  if (!failMode && !c.env.EVM_PRIVATE_KEY) {
+    return c.json(
+      { error: "EVM_PRIVATE_KEY is not set (wrangler secret / .dev.vars)" },
+      500,
+    );
+  }
+  const origin = new URL(c.req.url).origin;
+  const { agent, payment } = createPayerAgent(c.env, origin, failMode);
+  const stream = await agent.stream(body.messages ?? [], {
+    // /agent と同じく、llama 系がツール呼び出しをサボらないよう
+    // 1ステップ目だけ tool 呼び出しを強制する。
+    prepareStep: ({ stepNumber }) =>
+      stepNumber === 0 ? { toolChoice: "required" } : { toolChoice: "auto" },
+  });
+  const uiMessageStream = createUIMessageStream({
+    originalMessages: body.messages,
+    execute: async ({ writer }) => {
+      // workers-ai-provider の streaming.ts は SSE チャンクの
+      // `response`(native形式) と `choices[].delta.content`(OpenAI形式) を
+      // 両方処理するので、両フィールドを持つチャンクでは text-delta が
+      // 同一 (id, delta) で2回吐かれる。直前と完全に一致するものは落とす。
+      let lastDelta: { id?: string; delta?: string } | undefined;
+      for await (const part of toAISdkStream(stream, {
+        from: "agent",
+        version: "v7",
+      })) {
+        if (part.type === "text-delta") {
+          const p = part as { id?: string; delta?: string };
+          if (p.id === lastDelta?.id && p.delta === lastDelta?.delta) continue;
+          lastDelta = { id: p.id, delta: p.delta };
+        } else {
+          lastDelta = undefined;
+        }
+        writer.write(part);
+      }
+      writer.write({ type: "data-payment", data: payment.current });
+    },
+  });
+  return createUIMessageStreamResponse({ stream: uiMessageStream });
+});
 
 // ここに辿り着く = 決済済み。ミドルウェアが next() を呼んだ場合だけ実行される。
 app.get("/weather", (c) => c.json({ report: { weather: "sunny", temperature: 25 } }));

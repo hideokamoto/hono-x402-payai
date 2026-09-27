@@ -2,6 +2,10 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "hono-x402-payai",
   "main": "src/index.ts",
+  // /ui のチャットUI。public/ui/app.js は `pnpm build:ui` で生成する
+  "assets": {
+    "directory": "./public"
+  },
   "compatibility_date": "2026-09-26",
   "compatibility_flags": [
     "nodejs_compat"
