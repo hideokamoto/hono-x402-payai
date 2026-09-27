@@ -55,13 +55,31 @@ curl -i http://localhost:8787/weather -H "Accept: application/json"
 
 ```bash
 brew install stripe/purl/purl
-purl wallet add --type evm   # 支払い用アカウントの鍵をインポート
+```
 
-# 支払い条件だけ見る
+支払い用ウォレットを登録（初回のみ。`~/.purl/` に保存される）:
+
+```bash
+purl wallet add --type evm -k 0x<秘密鍵> --password <keystoreのパスワード> --set-active
+purl wallet list   # [active] になっていることを確認
+```
+
+テストの流れ:
+
+```bash
+# 1. 支払い条件だけ確認（支払わない）
 purl inspect http://localhost:8787/weather
+# → amount_human: 0.001 USDC (base-sepolia), recipient, asset 等が出る
 
-# 支払ってコンテンツを取得
-purl http://localhost:8787/weather
+# 2. 実際に支払ってコンテンツを取得（-v で署名・402再送・settle の過程を表示）
+purl -v http://localhost:8787/weather
+# → {"report":{"weather":"sunny","temperature":25}}
+```
+
+デプロイ済みの Worker に対しては URL を差し替えるだけ:
+
+```bash
+purl https://hono-x402-payai.wp-kyoto.workers.dev/weather
 ```
 
 ### 方法 B: スクリプト（buyer/buyer.ts）
