@@ -106,6 +106,15 @@ LLM（Workers AI バインディング）がツール経由で自分自身の `/
 x402 支払いをして取りに行く。buyer/ の Node スクリプトと違い、
 ウォレット署名も LLM も Worker 内で完結する。
 
+この機能は `feat/mastra-payer-agent` ブランチにある。
+
+```bash
+git checkout feat/mastra-payer-agent
+corepack pnpm install
+# PATH の pnpm が 9.x だと動かないので corepack 経由
+# （packageManager 指定の 11.12.0 が使われる）
+```
+
 ローカルでは `.dev.vars` に買い手の鍵を入れる（gitignore 済み）:
 
 ```bash
@@ -119,6 +128,11 @@ curl -s "http://localhost:8787/agent?prompt=Tell%20me%20the%20weather"
 ```
 
 `POST /agent` に `{"prompt": "..."}` を投げても同じ。
+返ってくる tx ハッシュは `https://sepolia.basescan.org/tx/<hash>` で確認できる。
+
+前提: 買い手ウォレットに Base Sepolia USDC（Circle faucet）が入っていること、
+Workers AI はローカルでもリモート実行されるので `wrangler login` 済みであること。
+
 デプロイ環境では `npx wrangler secret put EVM_PRIVATE_KEY` で登録する。
 
 注意:
