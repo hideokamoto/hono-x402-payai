@@ -119,6 +119,43 @@ pnpm deploy
 mainnet（`eip155:8453`）に切り替える場合は `NETWORK` を変え、
 `src/index.ts` の `testnet: true` を `false` にする。
 
+## For production（本番化の確認事項）
+
+PayAI は `eip155:8453`（Base mainnet）の exact スキームをサポートしているため、
+コード自体はネットワーク切替だけで動きます。ただし本番運用では以下を詰めてください。
+
+### 必須
+
+- **`NETWORK` を `eip155:8453` に、`testnet` を `false` に**
+- **`PAY_TO` を本番用の受取ウォレットに**。サーバー側はアドレスしか使わないので
+  秘密鍵の登録は不要（かつ絶対に入れない）
+- **PayAI API キーを発行して Secret 登録**。無料枠は受取ウォレットごと生涯 1,000
+  settlement で、Workers のような共有クラウド基盤は共有枠も消費するため、
+  API キーなしの本番利用は現実的ではない
+  ```bash
+  npx wrangler secret put PAYAI_API_KEY_ID
+  npx wrangler secret put PAYAI_API_KEY_SECRET
+  ```
+- **価格の見直し**。PayAI の従量料金は 1 settlement = $0.001。
+  `price: "$0.001"` のままだと売上が手数料で相殺されるので、
+  手数料を上回る価格（例: `$0.01` 以上）にする
+
+### 信頼性・運用
+
+- ファシリテーター障害時のハンドリング: 初回 `/supported` 取得失敗は 500 になる。
+  本番では 503 + クライアントへのリトライ指示を返す設計を検討
+- `wrangler.jsonc` に `observability.enabled` / `traces.enabled` を設定し、
+  verify/settle 失敗を構造化ログで追えるようにする
+- 大量リクエスト対策: verify 呼び出しはファシリテーターへのアウトバウンドを
+  消費するため、Cloudflare のレート制限や Bot 対策を噛ませると安心
+- 必要なら `routes` でカスタムドメインに載せる
+- 切替後は小額の本物 USDC で 1 回だけ決済検証し、着金を確認する
+
+### その他
+
+- 暗号資産での課金は地域によって届出・税務上の論点があるため、
+  商用利用では法務・会計面を確認すること
+
 ## その他のファイル
 
 - `buyer/probe-asset.ts` — ファシリテーターがアセットをホワイトリストしているかを
