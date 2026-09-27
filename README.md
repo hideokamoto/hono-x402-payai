@@ -49,7 +49,22 @@ curl -i http://localhost:8787/weather -H "Accept: application/json"
 # → 402 + PAYMENT-REQUIRED ヘッダ
 ```
 
-## 買い手スクリプト
+## 買い手
+
+### 方法 A: purl（Stripe 製の x402 対応 curl 風 CLI）
+
+```bash
+brew install stripe/purl/purl
+purl wallet add --type evm   # 支払い用アカウントの鍵をインポート
+
+# 支払い条件だけ見る
+purl inspect http://localhost:8787/weather
+
+# 支払ってコンテンツを取得
+purl http://localhost:8787/weather
+```
+
+### 方法 B: スクリプト（buyer/buyer.ts）
 
 ```bash
 cd buyer && npm install
@@ -57,7 +72,7 @@ cp .env.example .env   # EVM_PRIVATE_KEY に支払い用アカウントの秘密
 npx tsx buyer.ts
 ```
 
-支払い用アカウントには [Circle faucet](https://faucet.circle.com)（要ログイン）で
+どちらの方法でも、支払い用アカウントには [Circle faucet](https://faucet.circle.com)（要ログイン）で
 Base Sepolia のテスト用 USDC を入れておく。**秘密鍵はテスト用 USDC しか入っていない
 捨てアカウントのものに限ること。**
 
